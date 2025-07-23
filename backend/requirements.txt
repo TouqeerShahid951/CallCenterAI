@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+websockets
+openai-whisper
+torch
+soundfile
+transformers
+gtts
+librosa
+numpy 
