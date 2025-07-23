@@ -48,7 +48,7 @@ async def websocket_audio_stream_endpoint(websocket: WebSocket):
     is_processing = False
     target_sample_rate = 16000
     bytes_per_sample = 2  # int16
-    target_duration = 3  # seconds
+    target_duration = 2  # seconds (was 3)
     required_bytes = target_sample_rate * bytes_per_sample * target_duration
     
     try:
@@ -103,10 +103,33 @@ async def websocket_audio_stream_endpoint(websocket: WebSocket):
                         # Send transcript to frontend for display
                         await websocket.send_json({"type": "transcript", "text": transcript})
                         
-                        if transcript and len(transcript) > 2:  # Only process if we got a meaningful transcript
+                        if transcript and len(transcript) > 2:
+                            # Check for mostly non-alphabetic characters or very short transcript
+                            import re
+                            alpha_count = len(re.findall(r'[A-Za-z]', transcript))
+                            if alpha_count < 3:
+                                logger.info("⚠️ Transcript appears unintelligible, prompting user to repeat.")
+                                fallback_msg = "Sorry, I didn't catch that. Could you please repeat your question?"
+                                await websocket.send_json({"type": "agent_response", "text": fallback_msg})
+                                # Generate TTS for fallback
+                                tts = gTTS(fallback_msg, lang='en', slow=False)
+                                fd, tts_file_path = tempfile.mkstemp(suffix=".mp3")
+                                with os.fdopen(fd, "wb") as tts_file:
+                                    tts.write_to_fp(tts_file)
+                                logger.info(f"💾 Created TTS MP3 file: {tts_file_path}")
+                                with open(tts_file_path, "rb") as tts_file:
+                                    tts_audio_bytes = tts_file.read()
+                                os.remove(tts_file_path)
+                                logger.info(f"🗑️ Deleted TTS MP3 file")
+                                logger.info(f"📡 Sending fallback TTS audio: {len(tts_audio_bytes)} bytes")
+                                await websocket.send_bytes(tts_audio_bytes)
+                                logger.info(f"✅ Fallback TTS audio sent: {len(tts_audio_bytes)} bytes")
+                                audio_buffer = b""
+                                logger.info("🔄 Reset audio buffer for next chunk")
+                                is_processing = False
+                                continue
                             conversation_history.append({"role": "user", "content": transcript})
                             logger.info(f"💬 Added to conversation history. Total turns: {len(conversation_history)}")
-                            
                             # Generate AI response with improved prompt
                             if len(conversation_history) == 1:
                                 agent_response = "Hello! I'm your AI assistant. How can I help you today?"
@@ -128,6 +151,8 @@ async def websocket_audio_stream_endpoint(websocket: WebSocket):
                             conversation_history.append({"role": "agent", "content": agent_response})
                             logger.info(f"🤖 Final AI Agent response: '{agent_response}'")
                             logger.info("🗣️ Generating TTS audio...")
+                            # Send agent response to frontend for chat sidebar
+                            await websocket.send_json({"type": "agent_response", "text": agent_response})
                             # Generate TTS audio
                             tts = gTTS(agent_response, lang='en', slow=False)
                             fd, tts_file_path = tempfile.mkstemp(suffix=".mp3")
