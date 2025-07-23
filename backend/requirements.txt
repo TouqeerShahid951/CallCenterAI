@@ -8,3 +8,4 @@ transformers
 gtts
 librosa
 numpy 
+silero-vad @ git+https://github.com/pengzhendong/silero-vad.git@cfcc62358aec92084a003521a3673874082529c3

@@ -1,6 +1,6 @@
 from gtts import gTTS
 
-text = "Hello, this is a test of the text to madaeboard speech system."
-tts = gTTS(text)
-tts.save("test_output.mp3")
-print("TTS audio saved as test_output.mp3")
+test_text = "This is a test of the text-to-speech system."
+tts = gTTS(test_text, lang='en', slow=False)
+tts.save("test_tts.mp3")
+print("TTS audio saved as test_tts.mp3")
