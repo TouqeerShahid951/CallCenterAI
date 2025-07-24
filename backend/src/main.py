@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from src.controllers import call_controller
 import tempfile
-import whisper
+import assemblyai as aai
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from gtts import gTTS
 import numpy as np
@@ -49,6 +49,12 @@ def generate_godel_response(instruction, knowledge, dialog):
     outputs = model.generate(input_ids, max_length=128, min_length=8, top_p=0.9, do_sample=True)
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
+# AssemblyAI setup
+# Replace with your actual API key
+AASSEMBLYAI_API_KEY = "f8034eb98f464ae89e1fd263ba0b86dd"
+aai.settings.api_key = AASSEMBLYAI_API_KEY
+transcriber = aai.Transcriber()
+
 # FastAPI setup
 app = FastAPI()
 app.add_middleware(
@@ -59,11 +65,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(call_controller.router)
-
-# Load Whisper model
-logger.info("Loading Whisper model...")
-whisper_model = whisper.load_model("base.en")
-logger.info("✅ Whisper loaded")
 
 logging.basicConfig(level=logging.INFO)
 
@@ -188,17 +189,17 @@ async def websocket_audio_stream_endpoint(websocket: WebSocket):
                         pcm = b"".join(utterance_frames)
                         audio_float = np.frombuffer(pcm, np.int16).astype(np.float32) / 32768.0
                         sf.write("debug_utterance.wav", audio_float, SAMPLE_RATE, subtype='PCM_16')
-                        logger.info("🤖 Transcribing with Whisper...")
-                        result = whisper_model.transcribe(
-                            audio_float, 
-                            language="en",
-                            fp16=False
-                        )
-                        transcript = result.get("text", "").strip()
-                        logger.info(f"📝 Transcript: '{transcript}'")
-                        await websocket.send_json({"type": "transcript", "text": transcript})
-                        if transcript and len(transcript) > 2:
-                            conversation_history.append({"role": "user", "content": transcript})
+                        logger.info("🤖 Transcribing with AssemblyAI...")
+                        try:
+                            transcript = transcriber.transcribe("debug_utterance.wav")
+                            transcript_text = transcript.text
+                        except Exception as e:
+                            logger.error(f"AssemblyAI transcription failed: {e}")
+                            transcript_text = ""
+                        logger.info(f"📝 Transcript: '{transcript_text}'")
+                        await websocket.send_json({"type": "transcript", "text": transcript_text})
+                        if transcript_text and len(transcript_text) > 2:
+                            conversation_history.append({"role": "user", "content": transcript_text})
                             if len(conversation_history) == 1:
                                 response = "Hello! I'm your AI assistant. How can I help you today?"
                                 logger.info("👋 Using welcome message")
